@@ -17,7 +17,7 @@ type Metric = {
   label: string
   percent: number
   severity?: string
-  detail?: string
+  value?: string
   reset?: string
 }
 
@@ -64,10 +64,24 @@ function readError(value: unknown): string | undefined {
   return undefined
 }
 
+// Account labels and diagnostics are CLI text and can echo credential-shaped
+// fragments (e.g. an OpenRouter plan named after the key). Scrub before render.
+function scrub(value: string): string {
+  return value
+    .replace(/sk-[A-Za-z0-9_-]{9,}/g, "sk-<redacted>")
+    .replace(/(Bearer\s+)\S+/gi, "$1<redacted>")
+    .replace(/\b(api[_-]?key|token|secret|password)\b\s*[:=]\s*["']?[^\s"',}]+/gi, "$1=<redacted>")
+}
+
+function clean(value: string | undefined): string | undefined {
+  const trimmed = value?.trim()
+  return trimmed ? scrub(trimmed) : undefined
+}
+
 function parseProvider(input: unknown): Provider | undefined {
   if (!record(input)) return
   const id = readString(input.id)
-  const name = readString(input.display_name) ?? readString(input.name) ?? id
+  const name = clean(readString(input.display_name) ?? readString(input.name)) ?? id
   if (!id || !name) return
 
   const metrics: Metric[] = []
@@ -77,10 +91,10 @@ function parseProvider(input: unknown): Provider | undefined {
       const percent = readNumber(item.percent)
       if (percent === undefined) continue
       metrics.push({
-        label: readString(item.label) ?? "quota",
+        label: clean(readString(item.label)) ?? "quota",
         percent: Math.max(0, Math.min(100, Math.round(percent))),
         severity: readString(item.severity),
-        detail: readString(item.detail),
+        value: clean(readString(item.value)),
         reset: readString(item.reset_at),
       })
     }
@@ -90,20 +104,27 @@ function parseProvider(input: unknown): Provider | undefined {
   if (Array.isArray(input.sections)) {
     for (const item of input.sections) {
       if (!record(item)) continue
-      if (readString(item.type) !== "text") continue
-      const value = readString(item.value)
-      if (!value) continue
-      texts.push({ label: readString(item.label) ?? "", value })
+      const type = readString(item.type)
+      const label = clean(readString(item.label)) ?? ""
+      if (type === "text") {
+        const value = clean(readString(item.value))
+        if (value) texts.push({ label, value })
+      } else if (type === "block") {
+        const body = Array.isArray(item.body)
+          ? item.body.map((line) => clean(readString(line))).filter((line): line is string => !!line)
+          : []
+        if (body.length) texts.push({ label, value: body.join(" · ") })
+      }
     }
   }
 
   return {
     id,
     name,
-    plan: readString(input.plan),
+    plan: clean(readString(input.plan)),
     status: readString(input.status),
     stale: input.stale === true,
-    error: readError(input.error),
+    error: clean(readError(input.error)),
     metrics,
     texts,
   }
@@ -148,18 +169,19 @@ function truncate(value: string, max = MAX_TEXT) {
   return normalized.length <= max ? normalized : `${normalized.slice(0, max - 3)}...`
 }
 
-function bar(remaining: number) {
-  const filled = Math.round((remaining / 100) * BAR_CELLS)
+function bar(used: number) {
+  const filled = Math.round((used / 100) * BAR_CELLS)
   return `${"█".repeat(filled)}${"░".repeat(BAR_CELLS - filled)}`
 }
 
+// `percent` is usage, not remaining: high is bad.
 function severityColor(
   severity: string | undefined,
-  remaining: number,
+  used: number,
   theme: { success: unknown; warning: unknown; error: unknown },
 ) {
-  if (severity === "critical" || remaining <= 15) return theme.error
-  if (severity === "high" || severity === "mid" || remaining <= 40) return theme.warning
+  if (severity === "critical" || used >= 100) return theme.error
+  if (severity === "high" || severity === "mid" || used >= 80) return theme.warning
   return theme.success
 }
 
@@ -237,7 +259,6 @@ function AiUsagebarSidebar(props: { api: Parameters<TuiPlugin>[0]; options: Opti
 }
 
 function ProviderBlock(props: { provider: Provider; theme: ReturnType<Parameters<TuiPlugin>[0]>["theme"]["current"]; showErrors: boolean }) {
-  const accent = () => props.theme.text
   const meta = () => {
     const bits: string[] = []
     if (props.provider.plan) bits.push(props.provider.plan)
@@ -247,7 +268,7 @@ function ProviderBlock(props: { provider: Provider; theme: ReturnType<Parameters
 
   return (
     <box flexDirection="column" gap={0} paddingTop={0}>
-      <text fg={accent()}>
+      <text fg={props.theme.text}>
         <b>{props.provider.name}</b>
       </text>
       <For each={props.provider.metrics}>
@@ -257,6 +278,7 @@ function ProviderBlock(props: { provider: Provider; theme: ReturnType<Parameters
             {metric.label.padEnd(10, " ")}{" "}
             <span style={{ fg: severityColor(metric.severity, metric.percent, props.theme) }}>{bar(metric.percent)}</span>{" "}
             <span style={{ fg: props.theme.text }}>{String(metric.percent).padStart(3, " ")}%</span>
+            {metric.value ? <span style={{ fg: props.theme.textMuted }}> {metric.value}</span> : null}
             {resetLabel(metric.reset) ? <span style={{ fg: props.theme.textMuted }}> ↺{resetLabel(metric.reset)}</span> : null}
           </text>
         )}
@@ -265,7 +287,7 @@ function ProviderBlock(props: { provider: Provider; theme: ReturnType<Parameters
         {(row) => (
           <text fg={props.theme.textMuted}>
             {" "}
-            {truncate(`${row.label} ${row.value}`)}
+            {truncate(row.label ? `${row.label}: ${row.value}` : row.value)}
           </text>
         )}
       </For>
