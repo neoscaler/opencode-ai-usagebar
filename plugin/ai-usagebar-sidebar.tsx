@@ -122,26 +122,33 @@ function parseProvider(input: unknown): Provider | undefined {
   const name = clean(readString(input.display_name) ?? readString(input.name)) ?? id
   if (!id || !name) return
 
+  // A credit balance is not a rate-limit quota: render it as text, never as a
+  // bar. `text` rows are balance values too (DeepSeek "Balance $12.50").
   const metrics: Metric[] = []
+  const balances: TextRow[] = []
   if (Array.isArray(input.metrics)) {
     for (const item of input.metrics) {
       if (!record(item)) continue
       const percent = readNumber(item.percent)
       if (percent === undefined) continue
+      const label = clean(readString(item.label)) ?? "quota"
+      const value = clean(readString(item.value))
+      if (/balance/i.test(label)) {
+        balances.push({ label, value: value ?? `${Math.round(percent)}%` })
+        continue
+      }
       metrics.push({
-        label: clean(readString(item.label)) ?? "quota",
+        label,
         percent: Math.max(0, Math.min(100, Math.round(percent))),
         severity: readString(item.severity),
-        value: clean(readString(item.value)),
+        value,
         reset: readString(item.reset_at),
       })
     }
   }
 
-  // Only balances and the tariff survive: `text` rows are balance values
-  // (DeepSeek "Balance $12.50"), a "Tier"/"Plan" block is the tariff. Other
-  // blocks ("Usage by period") are dropped as noise.
-  const balances: TextRow[] = []
+  // A "Tier"/"Plan" block is the tariff. Other blocks ("Usage by period") are
+  // dropped as noise.
   let tier: string | undefined
   if (Array.isArray(input.sections)) {
     for (const item of input.sections) {
