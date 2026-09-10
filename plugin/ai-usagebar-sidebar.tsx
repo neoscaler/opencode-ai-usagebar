@@ -5,6 +5,23 @@ import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-j
 const MAX_TEXT = 46
 const BAR_CELLS = 12
 
+// ai-usagebar ships a glyph for some vendors and falls back to the short_name
+// for the rest. Fill the gaps with Nerd Font (MDI) glyphs, matching the font
+// the TUI runs in.
+const GLYPHS: Record<string, string> = {
+  "opencode-go": "\u{f0174}", // nf-md-code-tags
+  commandcode: "\u{f018d}", // nf-md-console
+}
+
+// ai-usagebar reports no accent colour, so brand-ish hexes give each provider a
+// stable identity. Falls back to the theme text colour.
+const ACCENTS: Record<string, string> = {
+  openrouter: "#8b8bf5",
+  deepseek: "#4d6bfe",
+  "opencode-go": "#f5a97f",
+  commandcode: "#a6e3a1",
+}
+
 type Options = {
   command?: string
   interval?: number
@@ -21,20 +38,15 @@ type Metric = {
   reset?: string
 }
 
-type TextRow = {
-  label: string
-  value: string
-}
-
 type Provider = {
   id: string
   name: string
-  plan?: string
-  status?: string
+  glyph?: string
+  accent?: string
   stale?: boolean
   error?: string
   metrics: Metric[]
-  texts: TextRow[]
+  meta?: string
 }
 
 type Snapshot = {
@@ -78,6 +90,17 @@ function clean(value: string | undefined): string | undefined {
   return trimmed ? scrub(trimmed) : undefined
 }
 
+function isGlyph(value: string | undefined): boolean {
+  if (!value) return false
+  return [...value].some((char) => (char.codePointAt(0) ?? 0) > 0x2000)
+}
+
+function glyphFor(id: string, icon: string | undefined): string | undefined {
+  if (GLYPHS[id]) return GLYPHS[id]
+  if (isGlyph(icon)) return icon
+  return undefined
+}
+
 function parseProvider(input: unknown): Provider | undefined {
   if (!record(input)) return
   const id = readString(input.id)
@@ -100,20 +123,21 @@ function parseProvider(input: unknown): Provider | undefined {
     }
   }
 
-  const texts: TextRow[] = []
+  // One compact summary line: the CLI's ordered text/block rows (usage by
+  // period, tier, credits), minus the metric rows already drawn as bars.
+  const parts: string[] = []
   if (Array.isArray(input.sections)) {
     for (const item of input.sections) {
       if (!record(item)) continue
       const type = readString(item.type)
-      const label = clean(readString(item.label)) ?? ""
       if (type === "text") {
         const value = clean(readString(item.value))
-        if (value) texts.push({ label, value })
+        if (value) parts.push(value)
       } else if (type === "block") {
         const body = Array.isArray(item.body)
           ? item.body.map((line) => clean(readString(line))).filter((line): line is string => !!line)
           : []
-        if (body.length) texts.push({ label, value: body.join(" · ") })
+        if (body.length) parts.push(body.join(" · "))
       }
     }
   }
@@ -121,12 +145,12 @@ function parseProvider(input: unknown): Provider | undefined {
   return {
     id,
     name,
-    plan: clean(readString(input.plan)),
-    status: readString(input.status),
+    glyph: glyphFor(id, readString(input.icon)),
+    accent: ACCENTS[id],
     stale: input.stale === true,
     error: clean(readError(input.error)),
     metrics,
-    texts,
+    meta: parts.length ? clean(parts.join(" · ")) : undefined,
   }
 }
 
@@ -259,35 +283,29 @@ function AiUsagebarSidebar(props: { api: Parameters<TuiPlugin>[0]; options: Opti
 }
 
 function ProviderBlock(props: { provider: Provider; theme: ReturnType<Parameters<TuiPlugin>[0]>["theme"]["current"]; showErrors: boolean }) {
+  const accent = () => props.provider.accent ?? props.theme.text
   const meta = () => {
     const bits: string[] = []
-    if (props.provider.plan) bits.push(props.provider.plan)
+    if (props.provider.meta) bits.push(props.provider.meta)
     if (props.provider.stale) bits.push("stale")
     return bits.join(" · ")
   }
 
   return (
     <box flexDirection="column" gap={0} paddingTop={0}>
-      <text fg={props.theme.text}>
+      <text fg={accent()}>
+        {props.provider.glyph ? <span>{props.provider.glyph} </span> : null}
         <b>{props.provider.name}</b>
       </text>
       <For each={props.provider.metrics}>
         {(metric) => (
           <text fg={props.theme.textMuted}>
             {" "}
-            {metric.label.padEnd(10, " ")}{" "}
+            {truncate(metric.label, 12).padEnd(12, " ")}{" "}
             <span style={{ fg: severityColor(metric.severity, metric.percent, props.theme) }}>{bar(metric.percent)}</span>{" "}
             <span style={{ fg: props.theme.text }}>{String(metric.percent).padStart(3, " ")}%</span>
             {metric.value ? <span style={{ fg: props.theme.textMuted }}> {metric.value}</span> : null}
             {resetLabel(metric.reset) ? <span style={{ fg: props.theme.textMuted }}> ↺{resetLabel(metric.reset)}</span> : null}
-          </text>
-        )}
-      </For>
-      <For each={props.provider.texts}>
-        {(row) => (
-          <text fg={props.theme.textMuted}>
-            {" "}
-            {truncate(row.label ? `${row.label}: ${row.value}` : row.value)}
           </text>
         )}
       </For>
