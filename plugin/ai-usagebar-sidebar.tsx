@@ -38,15 +38,21 @@ type Metric = {
   reset?: string
 }
 
+type TextRow = {
+  label: string
+  value: string
+}
+
 type Provider = {
   id: string
   name: string
   glyph?: string
   accent?: string
+  plan?: string
   stale?: boolean
   error?: string
   metrics: Metric[]
-  meta?: string
+  balances: TextRow[]
 }
 
 type Snapshot = {
@@ -101,6 +107,15 @@ function glyphFor(id: string, icon: string | undefined): string | undefined {
   return undefined
 }
 
+// The report's `plan` is a free-text headline: for balance vendors it carries
+// the balance ("DeepSeek — $5.50"), for others the account label. Only a real
+// plan/tier name is worth a line.
+function meaningfulPlan(value: string | undefined, name: string): string | undefined {
+  if (!value || value === name) return undefined
+  if (/[$€¥£]/.test(value) || value.includes("<redacted>")) return undefined
+  return value
+}
+
 function parseProvider(input: unknown): Provider | undefined {
   if (!record(input)) return
   const id = readString(input.id)
@@ -123,21 +138,24 @@ function parseProvider(input: unknown): Provider | undefined {
     }
   }
 
-  // One compact summary line: the CLI's ordered text/block rows (usage by
-  // period, tier, credits), minus the metric rows already drawn as bars.
-  const parts: string[] = []
+  // Only balances and the tariff survive: `text` rows are balance values
+  // (DeepSeek "Balance $12.50"), a "Tier"/"Plan" block is the tariff. Other
+  // blocks ("Usage by period") are dropped as noise.
+  const balances: TextRow[] = []
+  let tier: string | undefined
   if (Array.isArray(input.sections)) {
     for (const item of input.sections) {
       if (!record(item)) continue
       const type = readString(item.type)
+      const label = clean(readString(item.label)) ?? ""
       if (type === "text") {
         const value = clean(readString(item.value))
-        if (value) parts.push(value)
-      } else if (type === "block") {
+        if (value) balances.push({ label, value })
+      } else if (type === "block" && /tier|plan/i.test(label)) {
         const body = Array.isArray(item.body)
           ? item.body.map((line) => clean(readString(line))).filter((line): line is string => !!line)
           : []
-        if (body.length) parts.push(body.join(" · "))
+        if (body.length) tier = body.join(" · ")
       }
     }
   }
@@ -147,10 +165,11 @@ function parseProvider(input: unknown): Provider | undefined {
     name,
     glyph: glyphFor(id, readString(input.icon)),
     accent: ACCENTS[id],
+    plan: meaningfulPlan(tier ?? clean(readString(input.plan)), name),
     stale: input.stale === true,
     error: clean(readError(input.error)),
     metrics,
-    meta: parts.length ? clean(parts.join(" · ")) : undefined,
+    balances,
   }
 }
 
@@ -284,18 +303,14 @@ function AiUsagebarSidebar(props: { api: Parameters<TuiPlugin>[0]; options: Opti
 
 function ProviderBlock(props: { provider: Provider; theme: ReturnType<Parameters<TuiPlugin>[0]>["theme"]["current"]; showErrors: boolean }) {
   const accent = () => props.provider.accent ?? props.theme.text
-  const meta = () => {
-    const bits: string[] = []
-    if (props.provider.meta) bits.push(props.provider.meta)
-    if (props.provider.stale) bits.push("stale")
-    return bits.join(" · ")
-  }
 
   return (
     <box flexDirection="column" gap={0} paddingTop={0}>
       <text fg={accent()}>
         {props.provider.glyph ? <span>{props.provider.glyph} </span> : null}
         <b>{props.provider.name}</b>
+        {props.provider.plan ? <span style={{ fg: props.theme.textMuted }}> {truncate(props.provider.plan, 24)}</span> : null}
+        {props.provider.stale ? <span style={{ fg: props.theme.textMuted }}> ⏸</span> : null}
       </text>
       <For each={props.provider.metrics}>
         {(metric) => (
@@ -309,9 +324,14 @@ function ProviderBlock(props: { provider: Provider; theme: ReturnType<Parameters
           </text>
         )}
       </For>
-      <Show when={meta()}>
-        <text fg={props.theme.textMuted}> ◈ {truncate(meta())}</text>
-      </Show>
+      <For each={props.provider.balances}>
+        {(row) => (
+          <text fg={props.theme.textMuted}>
+            {" "}
+            {truncate(row.label ? `${row.label}: ${row.value}` : row.value)}
+          </text>
+        )}
+      </For>
       <Show when={props.showErrors && props.provider.error}>
         <text fg={props.theme.error}> ✗ {truncate(props.provider.error as string)}</text>
       </Show>
