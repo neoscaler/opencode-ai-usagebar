@@ -15,5 +15,11 @@ if [ ! -d "$CONFIG_DIR/node_modules/solid-js" ] || [ ! -d "$CONFIG_DIR/node_modu
   printf 'recent OpenCode provides these to TUI plugins automatically; if the sidebar fails to load, install them.\n'
 fi
 
+if command -v git >/dev/null 2>&1 && [ -d "$SOURCE_ROOT/.git" ]; then
+  COMMIT="$(git -C "$SOURCE_ROOT" rev-parse HEAD)"
+  printf '\nPackage install (pin the full commit hash; a tag or branch is re-checked every startup):\n'
+  printf '  opencode plugin add github:neoscaler/opencode-ai-usagebar#%s\n' "$COMMIT"
+fi
+
 printf '\nRestart OpenCode to load the AI Usage sidebar.\n'
 printf 'Requires OpenCode V2 and the ai-usagebar CLI on PATH (test: ai-usagebar usage --json).\n'
