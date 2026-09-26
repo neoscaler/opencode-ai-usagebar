@@ -1,0 +1,24 @@
+{
+  "name": "opencode-ai-usagebar",
+  "version": "2.0.0",
+  "description": "ai-usagebar provider quota/balance sidebar for the OpenCode TUI",
+  "type": "module",
+  "exports": {
+    "./tui": "./plugin/tui.tsx"
+  },
+  "engines": {
+    "opencode": ">=2.0.0"
+  },
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "tui",
+    "ai-usagebar"
+  ],
+  "peerDependencies": {
+    "@opencode/plugin": ">=2.0.0",
+    "@opentui/core": ">=0.5.10",
+    "@opentui/solid": ">=0.5.10",
+    "solid-js": ">=1.9.0"
+  }
+}

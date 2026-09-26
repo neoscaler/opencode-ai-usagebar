@@ -7,6 +7,9 @@ Command Code, OpenRouter, DeepSeek, Claude, Codex, ...) inside the session sideb
 Unlike single-provider sidebars, this reads the stable `ai-usagebar usage --json` report and renders
 whatever each provider returns: rate windows, credits/balance rows, plan, errors and stale state.
 
+> Requires **OpenCode V2**. V1 used a different plugin API; the last V1 release is
+> [v1.0.1](https://github.com/neoscaler/opencode-ai-usagebar/releases/tag/v1.0.1).
+
 ## How it works
 
 Every refresh the plugin runs:
@@ -23,7 +26,8 @@ It then renders `entries[]`:
 - `error` -> shown unless `showErrors: false`
 
 No background writer, no cache file, no service: the plugin fetches in-process and refreshes on an
-interval. If `ai-usagebar` is missing or fails, the sidebar shows the error.
+interval. It registers a slot in `sidebar.content`, and stays hidden when the `ai-usagebar` command
+is not on `PATH`.
 
 ## Install
 
@@ -31,34 +35,51 @@ interval. If `ai-usagebar` is missing or fails, the sidebar shows the error.
 ./install.sh
 ```
 
-It copies `plugin/ai-usagebar-sidebar.tsx` to `~/.config/opencode/plugin/` and adds
-`./plugin/ai-usagebar-sidebar.tsx` to `~/.config/opencode/tui.json`, then restart OpenCode.
+It copies `plugin/tui.tsx` and `package.json` to `~/.config/opencode/plugins/ai-usagebar/`, where
+OpenCode discovers the plugin automatically. Restart OpenCode afterwards.
+
+Alternatively install it as a package:
+
+```bash
+opencode plugin add github:neoscaler/opencode-ai-usagebar
+```
 
 ### Nix / home-manager
 
-Keep the repo as the source of truth and point `tui.json` at the absolute path instead of copying:
+Keep the repo as the source of truth and drop the plugin directory into your config:
+
+```nix
+xdg.configFile."opencode/plugins/ai-usagebar".source = ./path/to/opencode-ai-usagebar/plugin;
+```
+
+OpenCode discovers `<config>/plugins/ai-usagebar/` automatically, or you can list it explicitly in
+`~/.config/opencode/cli.json`:
 
 ```json
 {
-  "$schema": "https://opencode.ai/tui.json",
-  "plugin": ["/home/you/repositories/opencode-ai-usagebar/plugin/ai-usagebar-sidebar.tsx"]
+  "$schema": "https://opencode.ai/v2/cli.json",
+  "plugins": ["./plugins/ai-usagebar"]
 }
 ```
 
 ## Options
 
-Pass options as a tuple in `tui.json`:
+Pass options in the object form in `~/.config/opencode/cli.json`:
 
 ```json
 {
-  "plugin": [
-    ["./plugin/ai-usagebar-sidebar.tsx", {
-      "command": "ai-usagebar",
-      "interval": 60,
-      "timeout": 25,
-      "providers": ["opencode-go", "openrouter", "deepseek", "commandcode"],
-      "showErrors": true
-    }]
+  "$schema": "https://opencode.ai/v2/cli.json",
+  "plugins": [
+    {
+      "package": "./plugins/ai-usagebar",
+      "options": {
+        "command": "ai-usagebar",
+        "interval": 60,
+        "timeout": 25,
+        "providers": ["opencode-go", "openrouter", "deepseek", "commandcode"],
+        "showErrors": true
+      }
+    }
   ]
 }
 ```
@@ -73,7 +94,7 @@ Pass options as a tuple in `tui.json`:
 
 ## Requirements
 
-- OpenCode with TUI plugin support (tested on 1.18.29).
+- OpenCode V2 (tested on 2.0.18).
 - The `ai-usagebar` CLI on `PATH`, configured via `~/.config/ai-usagebar/config.toml`.
 
 Recent OpenCode provides `solid-js` and `@opentui/solid` to TUI plugins automatically. If the
@@ -85,5 +106,4 @@ bun add --cwd ~/.config/opencode solid-js @opentui/solid
 
 ## Uninstall
 
-Remove the `plugin` entry from `~/.config/opencode/tui.json` and delete
-`~/.config/opencode/plugin/ai-usagebar-sidebar.tsx`.
+Delete `~/.config/opencode/plugins/ai-usagebar/` (or remove its entry from `~/.config/opencode/cli.json`).

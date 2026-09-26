@@ -1,5 +1,5 @@
 /** @jsxImportSource @opentui/solid */
-import type { TuiPlugin, TuiPluginModule } from "@opencode-ai/plugin/tui"
+import { Plugin, usePlugin } from "@opencode/plugin/tui"
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 
 const MAX_TEXT = 46
@@ -28,6 +28,18 @@ type Options = {
   timeout?: number
   providers?: string[]
   showErrors?: boolean
+}
+
+type Theme = {
+  text: {
+    base: unknown
+    muted: unknown
+    feedback: {
+      error: { base: unknown }
+      warning: { base: unknown }
+      success: { base: unknown }
+    }
+  }
 }
 
 type Metric = {
@@ -228,11 +240,11 @@ function bar(used: number) {
 function severityColor(
   severity: string | undefined,
   used: number,
-  theme: { success: unknown; warning: unknown; error: unknown },
+  colors: { success: unknown; warning: unknown; error: unknown },
 ) {
-  if (severity === "critical" || used >= 100) return theme.error
-  if (severity === "high" || severity === "mid" || used >= 80) return theme.warning
-  return theme.success
+  if (severity === "critical" || used >= 100) return colors.error
+  if (severity === "high" || severity === "mid" || used >= 80) return colors.warning
+  return colors.success
 }
 
 function resetLabel(iso: string | undefined) {
@@ -248,9 +260,10 @@ function resetLabel(iso: string | undefined) {
   return `${Math.floor(hours / 24)}d`
 }
 
-function AiUsagebarSidebar(props: { api: Parameters<TuiPlugin>[0]; options: Options }) {
+function AiUsagebarSidebar(props: { options: Options }) {
+  const context = usePlugin()
+  const theme = () => context.theme as Theme
   const [state, setState] = createSignal<State>({ kind: "loading" })
-  const theme = () => props.api.theme.current
   const interval = () => Math.max(60, props.options.interval ?? 60) * 1000
   const timeout = () => Math.max(5, props.options.timeout ?? 25)
   const command = () => props.options.command ?? "ai-usagebar"
@@ -290,77 +303,75 @@ function AiUsagebarSidebar(props: { api: Parameters<TuiPlugin>[0]; options: Opti
 
   return (
     <box flexDirection="column" gap={0}>
-      <text fg={theme().text}>
+      <text fg={theme().text.base}>
         <b>AI USAGE</b>
-        <span style={{ fg: theme().textMuted }}> {updated() ? new Date(updated() as number).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : ""}</span>
+        <span style={{ fg: theme().text.muted }}> {updated() ? new Date(updated() as number).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : ""}</span>
       </text>
       <Show when={state().kind === "loading"}>
-        <text fg={theme().textMuted}>reading ai-usagebar...</text>
+        <text fg={theme().text.muted}>reading ai-usagebar...</text>
       </Show>
       <Show when={state().kind === "error"}>
-        <text fg={theme().error}>{truncate((state() as { message: string }).message)}</text>
+        <text fg={theme().text.feedback.error.base}>{truncate((state() as { message: string }).message)}</text>
       </Show>
       <Show when={state().kind === "ok" && providers().length === 0}>
-        <text fg={theme().textMuted}>no enabled providers</text>
+        <text fg={theme().text.muted}>no enabled providers</text>
       </Show>
       <For each={providers()}>{(provider) => <ProviderBlock provider={provider} theme={theme()} showErrors={showErrors()} />}</For>
     </box>
   )
 }
 
-function ProviderBlock(props: { provider: Provider; theme: ReturnType<Parameters<TuiPlugin>[0]>["theme"]["current"]; showErrors: boolean }) {
-  const accent = () => props.provider.accent ?? props.theme.text
+function ProviderBlock(props: { provider: Provider; theme: Theme; showErrors: boolean }) {
+  const accent = () => props.provider.accent ?? props.theme.text.base
 
   return (
     <box flexDirection="column" gap={0} paddingTop={0}>
       <text fg={accent()}>
         {props.provider.glyph ? <span>{props.provider.glyph} </span> : null}
         <b>{props.provider.name}</b>
-        {props.provider.plan ? <span style={{ fg: props.theme.textMuted }}> {truncate(props.provider.plan, 24)}</span> : null}
-        {props.provider.stale ? <span style={{ fg: props.theme.textMuted }}> ⏸</span> : null}
+        {props.provider.plan ? <span style={{ fg: props.theme.text.muted }}> {truncate(props.provider.plan, 24)}</span> : null}
+        {props.provider.stale ? <span style={{ fg: props.theme.text.muted }}> ⏸</span> : null}
       </text>
       <For each={props.provider.metrics}>
         {(metric) => (
-          <text fg={props.theme.textMuted}>
+          <text fg={props.theme.text.muted}>
             {" "}
             {truncate(metric.label, 12).padEnd(12, " ")}{" "}
-            <span style={{ fg: severityColor(metric.severity, metric.percent, props.theme) }}>{bar(metric.percent)}</span>{" "}
-            <span style={{ fg: props.theme.text }}>{String(metric.percent).padStart(3, " ")}%</span>
-            {metric.value ? <span style={{ fg: props.theme.textMuted }}> {metric.value}</span> : null}
-            {resetLabel(metric.reset) ? <span style={{ fg: props.theme.textMuted }}> ↺{resetLabel(metric.reset)}</span> : null}
+            <span style={{ fg: severityColor(metric.severity, metric.percent, {
+              success: props.theme.text.feedback.success.base,
+              warning: props.theme.text.feedback.warning.base,
+              error: props.theme.text.feedback.error.base,
+            }) }}>{bar(metric.percent)}</span>{" "}
+            <span style={{ fg: props.theme.text.base }}>{String(metric.percent).padStart(3, " ")}%</span>
+            {metric.value ? <span style={{ fg: props.theme.text.muted }}> {metric.value}</span> : null}
+            {resetLabel(metric.reset) ? <span style={{ fg: props.theme.text.muted }}> ↺{resetLabel(metric.reset)}</span> : null}
           </text>
         )}
       </For>
       <For each={props.provider.balances}>
         {(row) => (
-          <text fg={props.theme.textMuted}>
+          <text fg={props.theme.text.muted}>
             {" "}
             {truncate(row.label ? `${row.label}: ${row.value}` : row.value)}
           </text>
         )}
       </For>
       <Show when={props.showErrors && props.provider.error}>
-        <text fg={props.theme.error}> ✗ {truncate(props.provider.error as string)}</text>
+        <text fg={props.theme.text.feedback.error.base}> ✗ {truncate(props.provider.error as string)}</text>
       </Show>
     </box>
   )
 }
 
-const tui: TuiPlugin = async (api, options) => {
-  const opts = (options ?? {}) as Options
-  api.slots.register({
-    order: 275,
-    slots: {
-      sidebar_content() {
-        return <AiUsagebarSidebar api={api} options={opts} />
-      },
-    },
-  })
-}
-
-const plugin: TuiPluginModule & { id: string } = {
+export default Plugin.define({
   id: "opencode-ai-usagebar.sidebar",
-  tui,
-}
-
-export default plugin
+  setup(context) {
+    const options = (context.options ?? {}) as Options
+    // Without the ai-usagebar command there is nothing to show; keep the sidebar hidden.
+    if (typeof Bun === "undefined" || !Bun.which(options.command ?? "ai-usagebar")) return
+    return context.ui.slot({
+      append: "sidebar.content",
+      render: () => <AiUsagebarSidebar options={options} />,
+    })
+  },
+})
