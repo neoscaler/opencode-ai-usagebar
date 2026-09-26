@@ -35,8 +35,8 @@ is not on `PATH`.
 ./install.sh
 ```
 
-It copies `plugin/tui.tsx` and `package.json` to `~/.config/opencode/plugins/ai-usagebar/`, where
-OpenCode discovers the plugin automatically. Restart OpenCode afterwards.
+It copies `dist/tui.js` to `~/.config/opencode/plugins/ai-usagebar/tui.js`, where OpenCode discovers
+the plugin automatically. Restart OpenCode afterwards.
 
 Alternatively install it as a package:
 
@@ -46,32 +46,26 @@ opencode plugin add github:neoscaler/opencode-ai-usagebar
 
 ### Nix / home-manager
 
-Keep the repo as the source of truth and drop the plugin directory into your config:
+OpenCode does not discover plugins behind symlinked directories, so do not point `home.file` at the
+plugin directory. List the released package in `cli.json` instead:
 
 ```nix
-xdg.configFile."opencode/plugins/ai-usagebar".source = ./path/to/opencode-ai-usagebar/plugin;
-```
-
-OpenCode discovers `<config>/plugins/ai-usagebar/` automatically, or you can list it explicitly in
-`~/.config/opencode/cli.json`:
-
-```json
-{
-  "$schema": "https://opencode.ai/v2/cli.json",
-  "plugins": ["./plugins/ai-usagebar"]
-}
+xdg.configFile."opencode/cli.json".source = (pkgs.formats.json {}).generate "cli.json" {
+  "$schema" = "https://opencode.ai/v2/cli.json";
+  plugins = [ "github:neoscaler/opencode-ai-usagebar#v2.0.2" ];
+};
 ```
 
 ## Options
 
-Pass options in the object form in `~/.config/opencode/cli.json`:
+Pass options with the object form in `~/.config/opencode/cli.json`:
 
 ```json
 {
   "$schema": "https://opencode.ai/v2/cli.json",
   "plugins": [
     {
-      "package": "./plugins/ai-usagebar",
+      "package": "github:neoscaler/opencode-ai-usagebar#v2.0.2",
       "options": {
         "command": "ai-usagebar",
         "interval": 60,
@@ -92,17 +86,25 @@ Pass options in the object form in `~/.config/opencode/cli.json`:
 | `providers` | all enabled | allow-list of provider ids |
 | `showErrors` | `true` | render per-provider error lines |
 
+## Development
+
+OpenCode compiles plugin source with an eager JSX runtime, which gives no fine-grained reactivity for
+`<Show>`/`<For>` and dynamic props. The plugin is therefore built ahead of time with the Solid
+transform and loaded from `dist/tui.js`.
+
+```bash
+bun install
+bun run build
+```
+
+Edit `plugin/tui.tsx` and commit the rebuilt `dist/tui.js`.
+
 ## Requirements
 
 - OpenCode V2 (tested on 2.0.18).
 - The `ai-usagebar` CLI on `PATH`, configured via `~/.config/ai-usagebar/config.toml`.
 
-Recent OpenCode provides `solid-js` and `@opentui/solid` to TUI plugins automatically. If the
-sidebar does not load, install them into your OpenCode config dir:
-
-```bash
-bun add --cwd ~/.config/opencode solid-js @opentui/solid
-```
+Recent OpenCode provides `solid-js` and `@opentui/solid` to TUI plugins automatically.
 
 ## Uninstall
 
