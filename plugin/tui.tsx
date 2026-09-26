@@ -226,7 +226,8 @@ async function runAiUsagebar(command: string, timeout: number) {
   }
 }
 
-function truncate(value: string, max = MAX_TEXT) {
+function truncate(value: string | undefined, max = MAX_TEXT) {
+  if (typeof value !== "string") return ""
   const normalized = value.replace(/[\r\n\t]+/g, " ").trim()
   return normalized.length <= max ? normalized : `${normalized.slice(0, max - 3)}...`
 }
