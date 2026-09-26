@@ -94,7 +94,7 @@ transform and loaded from `dist/tui.js`.
 
 ```bash
 bun install
-bun run build
+bun run scripts/build.ts
 ```
 
 Edit `plugin/tui.tsx` and commit the rebuilt `dist/tui.js`.
