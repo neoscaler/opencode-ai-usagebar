@@ -14,14 +14,24 @@ var MAX_TEXT = 46;
 var BAR_CELLS = 12;
 var GLYPHS = {
   "opencode-go": "\uDB80\uDD74",
-  commandcode: "\uDB80\uDD8D"
+  commandcode: "\uDB80\uDD8D",
+  mistral: "\uD83D\uDC31"
 };
 var ACCENTS = {
-  openrouter: "#8b8bf5",
+  openrouter: "#6467f2",
   deepseek: "#4d6bfe",
-  "opencode-go": "#f5a97f",
-  commandcode: "#a6e3a1"
+  "opencode-go": "#3d7dc2",
+  commandcode: "#8c4edd",
+  mistral: "#e10500"
 };
+function lookup(map, id) {
+  if (map[id])
+    return map[id];
+  for (const key of Object.keys(map))
+    if (id.includes(key))
+      return map[key];
+  return;
+}
 var record = (value) => !!value && typeof value === "object" && !Array.isArray(value);
 function readString(value) {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
@@ -49,8 +59,9 @@ function isGlyph(value) {
   return [...value].some((char) => (char.codePointAt(0) ?? 0) > 8192);
 }
 function glyphFor(id, icon) {
-  if (GLYPHS[id])
-    return GLYPHS[id];
+  const glyph = lookup(GLYPHS, id);
+  if (glyph)
+    return glyph;
   if (isGlyph(icon))
     return icon;
   return;
@@ -79,17 +90,19 @@ function parseProvider(input) {
       if (percent === undefined)
         continue;
       const label = clean(readString(item.label)) ?? "quota";
-      const value = clean(readString(item.value));
+      const rawValue = clean(readString(item.value));
+      const rounded = Math.max(0, Math.min(100, Math.round(percent)));
+      const value = rawValue && /^\d+%$/.test(rawValue) && Number(rawValue.slice(0, -1)) === rounded ? undefined : rawValue;
       if (/balance/i.test(label)) {
         balances.push({
           label,
-          value: value ?? `${Math.round(percent)}%`
+          value: value ?? `${rounded}%`
         });
         continue;
       }
       metrics.push({
         label,
-        percent: Math.max(0, Math.min(100, Math.round(percent))),
+        percent: rounded,
         severity: readString(item.severity),
         value,
         reset: readString(item.reset_at)
@@ -121,7 +134,7 @@ function parseProvider(input) {
     id,
     name,
     glyph: glyphFor(id, readString(input.icon)),
-    accent: ACCENTS[id],
+    accent: lookup(ACCENTS, id),
     plan: meaningfulPlan(tier ?? clean(readString(input.plan)), name),
     stale: input.stale === true,
     error: clean(readError(input.error)),

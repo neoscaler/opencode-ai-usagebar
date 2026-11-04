@@ -11,15 +11,25 @@ const BAR_CELLS = 12
 const GLYPHS: Record<string, string> = {
   "opencode-go": "\u{f0174}", // nf-md-code-tags
   commandcode: "\u{f018d}", // nf-md-console
+  mistral: "\u{1F431}", // cat
 }
 
-// ai-usagebar reports no accent colour, so brand-ish hexes give each provider a
-// stable identity. Falls back to the theme text colour.
+// ai-usagebar reports no accent colour, so the official brand hexes give each
+// provider a stable identity. Falls back to the theme text colour.
 const ACCENTS: Record<string, string> = {
-  openrouter: "#8b8bf5",
+  openrouter: "#6467f2",
   deepseek: "#4d6bfe",
-  "opencode-go": "#f5a97f",
-  commandcode: "#a6e3a1",
+  "opencode-go": "#3d7dc2",
+  commandcode: "#8c4edd", // Burple
+  mistral: "#e10500", // Mistral logo red
+}
+
+// Custom providers arrive as "custom:<slug>", so match map keys as substrings
+// of the id, not only as exact ids.
+function lookup(map: Record<string, string>, id: string): string | undefined {
+  if (map[id]) return map[id]
+  for (const key of Object.keys(map)) if (id.includes(key)) return map[key]
+  return undefined
 }
 
 type Options = {
@@ -114,7 +124,8 @@ function isGlyph(value: string | undefined): boolean {
 }
 
 function glyphFor(id: string, icon: string | undefined): string | undefined {
-  if (GLYPHS[id]) return GLYPHS[id]
+  const glyph = lookup(GLYPHS, id)
+  if (glyph) return glyph
   if (isGlyph(icon)) return icon
   return undefined
 }
@@ -144,14 +155,18 @@ function parseProvider(input: unknown): Provider | undefined {
       const percent = readNumber(item.percent)
       if (percent === undefined) continue
       const label = clean(readString(item.label)) ?? "quota"
-      const value = clean(readString(item.value))
+      const rawValue = clean(readString(item.value))
+      const rounded = Math.max(0, Math.min(100, Math.round(percent)))
+      // Some providers report the percent again as `value` ("0%"); the row
+      // already appends "%", so drop the duplicate.
+      const value = rawValue && /^\d+%$/.test(rawValue) && Number(rawValue.slice(0, -1)) === rounded ? undefined : rawValue
       if (/balance/i.test(label)) {
-        balances.push({ label, value: value ?? `${Math.round(percent)}%` })
+        balances.push({ label, value: value ?? `${rounded}%` })
         continue
       }
       metrics.push({
         label,
-        percent: Math.max(0, Math.min(100, Math.round(percent))),
+        percent: rounded,
         severity: readString(item.severity),
         value,
         reset: readString(item.reset_at),
@@ -183,7 +198,7 @@ function parseProvider(input: unknown): Provider | undefined {
     id,
     name,
     glyph: glyphFor(id, readString(input.icon)),
-    accent: ACCENTS[id],
+    accent: lookup(ACCENTS, id),
     plan: meaningfulPlan(tier ?? clean(readString(input.plan)), name),
     stale: input.stale === true,
     error: clean(readError(input.error)),
