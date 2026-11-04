@@ -41,7 +41,7 @@ the plugin automatically. Restart OpenCode afterwards.
 Alternatively install it as a package. **Pin a full commit hash** instead of a tag or branch:
 
 ```bash
-opencode plugin add github:neoscaler/opencode-ai-usagebar#28c9fa307e974136c9e2f06aaf0b26754918f2ca
+opencode plugin add github:neoscaler/opencode-ai-usagebar#140d1fe03fc0af1446998a17e7fb5d0475999790
 ```
 
 OpenCode treats a tag or branch as *unpinned*: on every startup it checks the remote for updates
@@ -50,7 +50,7 @@ additionally clones the repository and runs `npm install`. A full commit hash st
 straight from the cache. Resolve the commit of a release tag with:
 
 ```bash
-git ls-remote https://github.com/neoscaler/opencode-ai-usagebar 'refs/tags/v2.0.3^{}'
+git ls-remote https://github.com/neoscaler/opencode-ai-usagebar 'refs/tags/v2.0.4^{}'
 ```
 
 ### Nix / home-manager
@@ -63,7 +63,7 @@ xdg.configFile."opencode/cli.json".source = (pkgs.formats.json {}).generate "cli
   "$schema" = "https://opencode.ai/v2/cli.json";
   # Full commit hash: a tag or branch is unpinned, so OpenCode re-checks the
   # remote on every startup and the plugin step stalls for seconds.
-  plugins = [ "github:neoscaler/opencode-ai-usagebar#28c9fa307e974136c9e2f06aaf0b26754918f2ca" ];
+  plugins = [ "github:neoscaler/opencode-ai-usagebar#140d1fe03fc0af1446998a17e7fb5d0475999790" ];
 };
 ```
 
@@ -76,7 +76,7 @@ Pass options with the object form in `~/.config/opencode/cli.json`:
   "$schema": "https://opencode.ai/v2/cli.json",
   "plugins": [
     {
-      "package": "github:neoscaler/opencode-ai-usagebar#28c9fa307e974136c9e2f06aaf0b26754918f2ca",
+      "package": "github:neoscaler/opencode-ai-usagebar#140d1fe03fc0af1446998a17e7fb5d0475999790",
       "options": {
         "command": "ai-usagebar",
         "interval": 60,
